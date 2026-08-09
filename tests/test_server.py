@@ -2,7 +2,9 @@
 Tests for MCP Test Server.
 """
 
+import json
 import pytest
+from mcp.types import CallToolRequest, TextContent, ServerResult, CallToolResult
 from mcp_test.server import MCPTestServer
 from mcp_test.models import ToolCallStatus, ToolResult
 
@@ -90,16 +92,50 @@ async def test_tool_get_server_info() -> None:
 
 @pytest.mark.asyncio
 async def test_tool_call_tracking() -> None:
-    """Test that tool calls are tracked."""
+    """Test that tool calls are tracked through the call_tool handler."""
     server = MCPTestServer()
     initial_count = len(server._tool_calls)
 
-    await server._tool_echo("test-call-8", {"message": "test"})
+    # Get the call_tool handler registered for CallToolRequest
+    request_handlers = server.server.request_handlers
+    call_tool_handler = request_handlers.get(CallToolRequest)
+
+    assert call_tool_handler is not None, (
+        f"Could not find call_tool handler for CallToolRequest. "
+        f"Available keys: {list(request_handlers.keys())}"
+    )
+
+    # Call the handler directly with echo tool
+    # The handler expects a CallToolRequest object
+    request = CallToolRequest(
+        method="tools/call",
+        params={"name": "echo", "arguments": {"message": "test"}}
+    )
+    result = await call_tool_handler(request)
+
+    # Verify exactly one ToolCall entry was created
     assert len(server._tool_calls) == initial_count + 1
 
-    # Check the tracked call
-    call_id = list(server._tool_calls.keys())[-1]
+    # The handler returns a ServerResult wrapping CallToolResult
+    # Extract the CallToolResult from the ServerResult
+    assert isinstance(result, ServerResult)
+    call_tool_result = result.root
+    assert isinstance(call_tool_result, CallToolResult)
+
+    # Get the call_id from the result content
+    assert isinstance(call_tool_result.content, list) and len(call_tool_result.content) == 1
+    content = call_tool_result.content[0]
+    assert isinstance(content, TextContent)
+    parsed = json.loads(content.text)
+    call_id = parsed["call_id"]
+
+    # Verify the tracked call
     call = server._tool_calls[call_id]
     assert call.name == "echo"
     assert call.arguments == {"message": "test"}
     assert call.status == ToolCallStatus.COMPLETED
+
+    # Verify the returned ToolResult
+    assert parsed["success"] is True
+    assert parsed["result"] == {"echo": "test"}
+    assert parsed["call_id"] == call_id
