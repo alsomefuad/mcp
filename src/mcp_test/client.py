@@ -9,7 +9,6 @@ import json
 import logging
 import sys
 from contextlib import AsyncExitStack
-from pathlib import Path
 from typing import Any
 
 from mcp import ClientSession, StdioServerParameters
@@ -30,7 +29,8 @@ class MCPTestClient:
         Initialize the client.
 
         Args:
-            server_command: Command to start the MCP server (e.g., ["python", "-m", "mcp_test.server"])
+            server_command: Command to start the MCP server (e.g.,
+                ["python", "-m", "mcp_test.server"])
         """
         self.server_command = server_command
         self.session: ClientSession | None = None
@@ -39,9 +39,13 @@ class MCPTestClient:
 
     async def connect(self) -> None:
         """Connect to the MCP server."""
-        server_params = StdioServerParameters(command=self.server_command[0], args=self.server_command[1:])
+        server_params = StdioServerParameters(
+            command=self.server_command[0], args=self.server_command[1:]
+        )
 
-        stdio_transport = await self._exit_stack.enter_async_context(stdio_client(server_params))
+        stdio_transport = await self._exit_stack.enter_async_context(
+            stdio_client(server_params)
+        )
         read_stream, write_stream = stdio_transport
 
         self.session = await self._exit_stack.enter_async_context(
@@ -120,7 +124,12 @@ class MCPTestClient:
         await self.connect()
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: object | None,
+    ) -> None:
         await self.close()
 
 
@@ -137,19 +146,19 @@ async def main() -> None:
 
         # List tools
         tools = await client.list_tools()
-        print(f"Available tools: {[t.name for t in tools]}")
+        logger.info("Available tools: %s", [t.name for t in tools])
 
         # Test echo
         result = await client.test_echo("Hello, MCP!")
-        print(f"Echo result: {result}")
+        logger.info("Echo result: %s", result)
 
         # Test add
         result = await client.test_add(5, 3)
-        print(f"Add result: {result}")
+        logger.info("Add result: %s", result)
 
         # Get server info
         result = await client.get_server_info()
-        print(f"Server info: {result}")
+        logger.info("Server info: %s", result)
 
     finally:
         await client.close()
