@@ -86,11 +86,11 @@ class MCPTestServer:
 
             try:
                 if name == "echo":
-                    result = await self._tool_echo(arguments)
+                    result = await self._tool_echo(call_id, arguments)
                 elif name == "add":
-                    result = await self._tool_add(arguments)
+                    result = await self._tool_add(call_id, arguments)
                 elif name == "get_server_info":
-                    result = await self._tool_get_server_info(arguments)
+                    result = await self._tool_get_server_info(call_id, arguments)
                 else:
                     raise ValueError(f"Unknown tool: {name}")
 
@@ -103,25 +103,33 @@ class MCPTestServer:
                 error_result = ToolResult(call_id=call_id, success=False, error=str(e))
                 return CallToolResult(content=[TextContent(type="text", text=json.dumps(error_result.model_dump()))])
 
-    async def _tool_echo(self, arguments: dict[str, Any]) -> ToolResult:
+    async def _tool_echo(self, call_id: str, arguments: dict[str, Any]) -> ToolResult:
         """Echo tool implementation."""
-        message = arguments.get("message", "")
-        return ToolResult(call_id="", success=True, result={"echo": message})
+        # Validate required argument
+        if "message" not in arguments:
+            raise ValueError("Missing required argument: 'message'")
+        message = arguments["message"]
+        return ToolResult(call_id=call_id, success=True, result={"echo": message})
 
-    async def _tool_add(self, arguments: dict[str, Any]) -> ToolResult:
+    async def _tool_add(self, call_id: str, arguments: dict[str, Any]) -> ToolResult:
         """Add tool implementation."""
-        a = arguments.get("a", 0)
-        b = arguments.get("b", 0)
-        return ToolResult(call_id="", success=True, result={"sum": a + b})
+        # Validate required arguments
+        if "a" not in arguments:
+            raise ValueError("Missing required argument: 'a'")
+        if "b" not in arguments:
+            raise ValueError("Missing required argument: 'b'")
+        a = arguments["a"]
+        b = arguments["b"]
+        return ToolResult(call_id=call_id, success=True, result={"sum": a + b})
 
-    async def _tool_get_server_info(self, arguments: dict[str, Any]) -> ToolResult:
+    async def _tool_get_server_info(self, call_id: str, arguments: dict[str, Any]) -> ToolResult:
         """Get server info tool implementation."""
         info = ServerInfo(
             name=self.name,
             version=self.version,
             tools=["echo", "add", "get_server_info"],
         )
-        return ToolResult(call_id="", success=True, result=info.model_dump())
+        return ToolResult(call_id=call_id, success=True, result=info.model_dump())
 
     async def run(self) -> None:
         """Run the MCP server over stdio."""
