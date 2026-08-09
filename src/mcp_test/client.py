@@ -7,14 +7,16 @@ A simple MCP client that can connect to and test MCP servers.
 import asyncio
 import json
 import logging
+import sys
 from contextlib import AsyncExitStack
+from pathlib import Path
 from typing import Any
 
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from mcp.types import CallToolResult, ListToolsResult, TextContent, Tool
 
-from .models import ToolCall, ToolCallStatus, ToolResult
+from .models import ToolResult
 
 
 logger = logging.getLogger(__name__)
@@ -65,6 +67,16 @@ class MCPTestClient:
         await self._refresh_tools()
         return self._tools
 
+    def _extract_text_content(self, result: CallToolResult) -> str:
+        """Extract text content from tool result, handling multiple content blocks."""
+        if not result.content:
+            return ""
+        text_parts = []
+        for content in result.content:
+            if isinstance(content, TextContent):
+                text_parts.append(content.text)
+        return "".join(text_parts)
+
     async def call_tool(self, name: str, arguments: dict[str, Any]) -> ToolResult:
         """Call a tool on the server."""
         if not self.session:
@@ -72,18 +84,19 @@ class MCPTestClient:
 
         result: CallToolResult = await self.session.call_tool(name, arguments)
 
-        # Parse the result
-        if result.content and isinstance(result.content[0], TextContent):
+        # Parse the result - handle multiple content blocks
+        text_content = self._extract_text_content(result)
+        if text_content:
             try:
-                parsed = json.loads(result.content[0].text)
+                parsed = json.loads(text_content)
                 return ToolResult(**parsed)
             except (json.JSONDecodeError, TypeError):
                 return ToolResult(
                     call_id="",
                     success=False,
-                    error=f"Failed to parse result: {result.content[0].text}",
+                    error=f"Failed to parse result: {text_content}",
                 )
-        return ToolResult(call_id="", success=False, error="No content in result")
+        return ToolResult(call_id="", success=False, error="No text content in result")
 
     async def test_echo(self, message: str) -> ToolResult:
         """Test the echo tool."""
@@ -111,10 +124,14 @@ class MCPTestClient:
         await self.close()
 
 
+def _get_server_module_path() -> list[str]:
+    """Get the command to run the server module."""
+    return [sys.executable, "-m", "mcp_test.server"]
+
+
 async def main() -> None:
     """Run a quick test of the client against the server."""
-    # This assumes the server is importable as a module
-    client = MCPTestClient(["python", "-m", "mcp_test.server"])
+    client = MCPTestClient(_get_server_module_path())
     try:
         await client.connect()
 
